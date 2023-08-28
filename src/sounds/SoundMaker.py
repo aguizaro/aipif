@@ -1,9 +1,7 @@
 from common.ContextAware import ContextAware
 from sounds.selection import select_title, generate_keywords
 from sounds.collection import collect_sounds, preview_sound
-from freesound import FreesoundException
 import os
-import time
 
 class SoundMaker(ContextAware):
 
@@ -24,29 +22,29 @@ class SoundMaker(ContextAware):
         Returns:
             None or web browser playable url str of sound matching `prompt_dict`
         """
-        temp_directory= os.getenv('TEMP_DIRECTORY')
         
         #prompt, negative_prompt = self.make_prompt(prompt_dict)
         prompt= prompt_dict['positive_prompt_text']
         
         # openai generates keywords from the prompt
         keywords= generate_keywords(prompt)
-        
+        if not keywords:
+            return None
+                
         # keywords are used to query and collect sounds from freesound and results are written to temp_directory/sound_data.txt
-        try:
-            sound_objects= collect_sounds(keywords)
-        except FreesoundException as e:
-            if e.code == 429: # Too many requests
-                print("Waiting for freesound api throttle to expire...")
-                time.sleep(60)
-                sound_objects= collect_sounds(keywords)
+        sound_objects= collect_sounds(keywords)
+        if not sound_objects:
+            return None
         
         # langchain uses openai to read sound data and selects most relevant sound id based on prompt
         title_id= select_title(prompt)
-        title_id= int(title_id.strip())
+        if not title_id:
+            return None
+            
         # download sound file from selected sound id to temp_directory as 'title_id.mp3'
+        title_id= int(title_id.strip())
         preview_sound(title_id, sound_objects)
-        path= f'{temp_directory}{title_id}.mp3'
+        path= os.getenv('TEMP_DIRECTORY') + f'{title_id}.mp3'
         
         # use media manager to create sound url and return it
         return generate_audio_html(path)
@@ -77,4 +75,15 @@ def generate_audio_html(sound_file):
     sound_url = MediaManager().bytes_to_mp4_url(sound)
 
     return sound_url
+
+def is_six_digit_str(val):
+    """returns `True` if val is a 6 digit string, `False` otherwise
+
+    Args:
+    -   val(string)): string to check
+
+    Returns:
+        bool: `True` or `False`
+    """
+    return isinstance(val, str) and val.isdigit() and len(val) == 6
 
